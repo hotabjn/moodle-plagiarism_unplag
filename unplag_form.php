@@ -63,12 +63,6 @@ class unplag_setup_form extends moodleform {
         $mform->addRule('unplag_api_secret', null, 'required', null, 'client');
         $mform->setType('unplag_api_secret', PARAM_TEXT);
 
-        $mform->addElement('text', 'unplag_lang', plagiarism_unplag::trans('unplag_lang'));
-        $mform->addHelpButton('unplag_lang', 'unplag_lang', 'plagiarism_unplag');
-        $mform->addRule('unplag_lang', null, 'required', null, 'client');
-        $mform->setDefault('unplag_lang', 'en-US');
-        $mform->setType('unplag_lang', PARAM_TEXT);
-
         $mform->addElement('textarea', 'unplag_student_disclosure', plagiarism_unplag::trans('studentdisclosure'),
             'wrap="virtual" rows="6" cols="100"');
         $mform->addHelpButton('unplag_student_disclosure', 'studentdisclosure', 'plagiarism_unplag');
@@ -79,7 +73,7 @@ class unplag_setup_form extends moodleform {
         foreach (array_keys($mods) as $mod) {
             if (plugin_supports('mod', $mod, FEATURE_PLAGIARISM) && plagiarism_unplag::is_support_mod($mod)) {
                 $modstring = 'unplag_enable_mod_' . $mod;
-                $mform->addElement('checkbox', $modstring, plagiarism_unplag::trans('unplag_enableplugin', $mod));
+                $mform->addElement('checkbox', $modstring, plagiarism_unplag::trans('unplag_enableplugin', ucfirst($mod)));
             }
         }
 

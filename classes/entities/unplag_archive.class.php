@@ -26,7 +26,6 @@
 namespace plagiarism_unplag\classes\entities;
 
 use plagiarism_unplag\classes\exception\unplag_exception;
-use plagiarism_unplag\classes\helpers\unplag_stored_file;
 use plagiarism_unplag\classes\plagiarism\unplag_content;
 use plagiarism_unplag\classes\task\unplag_upload_and_check_task;
 use plagiarism_unplag\classes\unplag_api;
@@ -36,6 +35,9 @@ use plagiarism_unplag\classes\unplag_notification;
 if (!defined('MOODLE_INTERNAL')) {
     die('Direct access to this script is forbidden.');
 }
+
+define('ARCHIVE_IS_EMPTY', 'Archive is empty or contains document(s) with no text');
+define('ARCHIVE_CANT_BE_OPEN', 'Can\'t open zip archive');
 
 /**
  * Class unplag_archive
@@ -72,13 +74,16 @@ class unplag_archive {
      */
     public function run_checks() {
         global $DB;
+        global $CFG;
 
         $archiveinternalfile = $this->unplagcore->get_plagiarism_entity($this->file)->get_internal_file();
 
         $ziparch = new \zip_archive();
-        $pathname = unplag_stored_file::get_protected_pathname($this->file);
-        if (!$ziparch->open($pathname, \file_archive::OPEN)) {
-            $this->invalid_response($archiveinternalfile, "Can't open zip archive");
+
+        $tmpzipfile = tempnam($CFG->tempdir, 'unicheck_zip');
+        $this->file->copy_content_to($tmpzipfile);
+        if (!$ziparch->open($tmpzipfile, \file_archive::OPEN)) {
+            $this->invalid_response($archiveinternalfile, ARCHIVE_CANT_BE_OPEN);
 
             return false;
         }
@@ -92,7 +97,7 @@ class unplag_archive {
         }
 
         if (!$fileexist) {
-            $this->invalid_response($archiveinternalfile, "Empty archive");
+            $this->invalid_response($archiveinternalfile, ARCHIVE_IS_EMPTY);
 
             return false;
         }
@@ -116,21 +121,19 @@ class unplag_archive {
     /**
      * @param \zip_archive $ziparch
      * @param null         $parentid
+     * @param int          $maxsupportedcount Max supported processed files
      */
-    private function process_archive_files(\zip_archive&$ziparch, $parentid = null) {
+    private function process_archive_files(\zip_archive&$ziparch, $parentid = null, $maxsupportedcount = 10) {
         global $CFG;
 
         $processed = array();
+        $supportedcount = 0;
         foreach ($ziparch as $file) {
             if ($file->is_directory) {
                 continue;
             }
 
-            $size = $file->size;
             $name = fix_utf8($file->pathname);
-            $format = pathinfo($name, PATHINFO_EXTENSION);
-
-            $content = '';
             $tmpfile = tempnam($CFG->tempdir, 'unplag_unzip');
 
             if (!$fp = fopen($tmpfile, 'wb')) {
@@ -155,10 +158,19 @@ class unplag_archive {
             fclose($fz);
             fclose($fp);
 
-            if ($bytescopied != $size) {
+            if ($bytescopied != $file->size) {
                 $this->unlink($tmpfile);
                 $processed[$name] = 'Can not read file from zip archive';
                 continue;
+            }
+
+            $format = pathinfo($name, PATHINFO_EXTENSION);
+            if (!\plagiarism_unplag::is_supported_extension($format)) {
+                continue;
+            }
+
+            if ($supportedcount >= $maxsupportedcount) {
+                break;
             }
 
             $plagiarismentity = new unplag_content($this->unplagcore, null, $name, $format, $parentid);
@@ -172,7 +184,7 @@ class unplag_archive {
                 'parent_id'  => $parentid,
             ));
 
-            unset($content);
+            $supportedcount++;
         }
     }
 
